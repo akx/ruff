@@ -1,9 +1,77 @@
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 
 use crate::{nodes, Expr};
 
 /// A representation of a qualified name, like `typing.List`.
-pub type CallPath<'a> = SmallVec<[&'a str; 8]>;
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CallPath<'a>(SmallVec<[&'a str; 8]>);
+
+impl<'a> CallPath<'a> {
+    pub fn from_slice(p0: &[&'a str]) -> CallPath<'a> {
+        CallPath(SmallVec::from_slice(p0))
+    }
+    pub fn with_capacity(capacity: usize) -> CallPath<'a> {
+        CallPath(SmallVec::with_capacity(capacity))
+    }
+    pub fn extend_from_slice(&mut self, slice: &[&'a str]) {
+        self.0.extend_from_slice(slice);
+    }
+    pub fn push(&mut self, segment: &'a str) {
+        self.0.push(segment);
+    }
+    pub fn pop(&mut self) -> Option<&str> {
+        self.0.pop()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub fn as_slice(&self) -> &[&'a str] {
+        self.0.as_slice()
+    }
+
+    pub fn split_first(&self) -> Option<(&str, &[&str])> {
+        self.0.split_first().map(|(first, rest)| (*first, rest))
+    }
+
+    pub fn starts_with(&self, other: &[&str]) -> bool {
+        self.0.starts_with(other)
+    }
+
+    pub fn last(&self) -> Option<&str> {
+        self.0.last().copied()
+    }
+}
+
+impl<'a> IntoIterator for CallPath<'a> {
+    type Item = &'a str;
+    type IntoIter = CallPathIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        CallPathIterator {
+            call_path: self,
+            index: 0,
+        }
+    }
+}
+
+pub struct CallPathIterator<'a> {
+    call_path: CallPath<'a>,
+    index: usize,
+}
+
+impl<'a> Iterator for CallPathIterator<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<&'a str> {
+        if self.index < self.call_path.0.len() {
+            let index = self.index;
+            self.index += 1;
+            Some(self.call_path.0[index])
+        } else {
+            None
+        }
+    }
+}
 
 /// Convert an `Expr` to its [`CallPath`] segments (like `["typing", "List"]`).
 pub fn collect_call_path(expr: &Expr) -> Option<CallPath> {
@@ -121,7 +189,7 @@ pub fn collect_call_path(expr: &Expr) -> Option<CallPath> {
     };
 
     collect_call_path(&attr8.value).map(|mut segments| {
-        segments.extend([
+        segments.0.extend([
             attr8.attr.as_str(),
             attr7.attr.as_str(),
             attr6.attr.as_str(),
@@ -137,7 +205,7 @@ pub fn collect_call_path(expr: &Expr) -> Option<CallPath> {
 
 /// Convert an `Expr` to its call path (like `List`, or `typing.List`).
 pub fn compose_call_path(expr: &Expr) -> Option<String> {
-    collect_call_path(expr).map(|call_path| format_call_path(&call_path))
+    collect_call_path(expr).map(|call_path| format_call_path(&call_path.0))
 }
 
 /// Format a call path for display.
@@ -182,7 +250,7 @@ pub fn format_call_path(call_path: &[&str]) -> String {
 /// assert_eq!(from_unqualified_name("list").as_slice(), ["list"]);
 /// ```
 pub fn from_unqualified_name(name: &str) -> CallPath {
-    name.split('.').collect()
+    CallPath(name.split('.').collect())
 }
 
 /// Create a [`CallPath`] from a fully-qualified name.
@@ -196,9 +264,9 @@ pub fn from_unqualified_name(name: &str) -> CallPath {
 /// ```
 pub fn from_qualified_name(name: &str) -> CallPath {
     if name.contains('.') {
-        name.split('.').collect()
+        CallPath(name.split('.').collect())
     } else {
         // Special-case: for builtins, return `["", "int"]` instead of `["int"]`.
-        smallvec!["", name]
+        CallPath(SmallVec::from_vec(vec!["", name]))
     }
 }

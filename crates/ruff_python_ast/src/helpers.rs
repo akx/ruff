@@ -1,8 +1,6 @@
 use std::borrow::Cow;
 use std::path::Path;
 
-use smallvec::SmallVec;
-
 use ruff_python_trivia::CommentRanges;
 use ruff_source_file::Locator;
 use ruff_text_size::{Ranged, TextRange};
@@ -797,7 +795,7 @@ pub fn collect_import_from_member<'a>(
     module: Option<&'a str>,
     member: &'a str,
 ) -> CallPath<'a> {
-    let mut call_path: CallPath = SmallVec::with_capacity(
+    let mut call_path: CallPath = CallPath::with_capacity(
         level.unwrap_or_default() as usize
             + module
                 .map(|module| module.split('.').count())
@@ -816,7 +814,9 @@ pub fn collect_import_from_member<'a>(
 
     // Add the remaining segments.
     if let Some(module) = module {
-        call_path.extend(module.split('.'));
+        for bit in module.split('.') {
+            call_path.push(bit);
+        }
     }
 
     // Add the member.
@@ -835,10 +835,12 @@ pub fn from_relative_import<'a>(
     // The remaining segments to the call path (e.g., given `bar.baz`, `["baz"]`).
     tail: &[&'a str],
 ) -> Option<CallPath<'a>> {
-    let mut call_path: CallPath = SmallVec::with_capacity(module.len() + import.len() + tail.len());
+    let mut call_path: CallPath = CallPath::with_capacity(module.len() + import.len() + tail.len());
 
     // Start with the module path.
-    call_path.extend(module.iter().map(String::as_str));
+    for bit in module.iter() {
+        call_path.push(bit);
+    }
 
     // Remove segments based on the number of dots.
     for segment in import {
